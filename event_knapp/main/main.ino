@@ -15,8 +15,6 @@ const int pin_btn2 = 18; // :|
 const int pin_btn3 = 19; // :)
 
 // Edit these
-const char* ssid = "";
-const char* password = "";
 const char* url = "https://[...].execute-api.eu-central-1.amazonaws.com/prod/dataplattform_ingest/EventRatingType";
 const char* ingest_api_key = "";
 
@@ -55,10 +53,6 @@ void setup() {
 void connect_to_wifi() {
     Serial.print("URL: ");
     Serial.println(url);
-    Serial.print("Connecting to ");
-    Serial.println(ssid);
-    Serial.print("Password: ");
-    Serial.println(password);
 
     Portal.begin();
 
@@ -132,7 +126,6 @@ void loop() {
         post += "\"}";
         Serial.println(post);
         int response = http.POST(post);
-        delay(500);
         diodeLightReset();
         if (response >= 200 && response < 300) {
             digitalWrite(pin_g, HIGH);
