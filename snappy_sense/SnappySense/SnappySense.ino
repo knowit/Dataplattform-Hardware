@@ -1,10 +1,13 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <AutoConnect.h>
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+AutoConnect Portal;
+AutoConnectConfig Config;
 
 #define AWS_LAMBDA ""
 #define AWS_API_KEY ""
@@ -69,7 +72,8 @@ void blinkLED(int pin){
 }
 
 void connectToWifi() {
- WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+ Portal.begin();
+ //WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
  Serial.print("Connecting to WIFI");
  
  while (WiFi.status() != WL_CONNECTED) {
@@ -90,6 +94,8 @@ void setupLEDs() {
 ///////////////////////////////////////////
 
 void setup() {
+ Config.immediateStart = true;
+ Portal.config(Config);
  Serial.begin(9600);
  setupLEDs();
  connectToWifi();
@@ -101,6 +107,7 @@ void setup() {
 }
 
 void loop() {
+ Portal.handleClient();
  sensorLoop();
 
  DynamicJsonBuffer jsonBuffer;
