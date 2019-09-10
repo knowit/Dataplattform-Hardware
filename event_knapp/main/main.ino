@@ -40,6 +40,10 @@ void setup() {
         pinMode(dips_input[i], INPUT);
     }
 
+    //Edit these for a different access point name and password
+    Config.apid = "";
+    Config.psk = "";
+
     Config.immediateStart = true;
     Portal.config(Config);
 
