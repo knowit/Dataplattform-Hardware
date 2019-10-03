@@ -60,8 +60,8 @@ void setup() {
   }
 
   // Edit these
-  Config.apid = "EventBox";
-  Config.psk = "objectnet";
+  Config.apid = "";
+  Config.psk = "";
 
   Config.immediateStart = true;
   Portal.config(Config);
