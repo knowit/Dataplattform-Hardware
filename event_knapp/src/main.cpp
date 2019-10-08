@@ -2,6 +2,11 @@
 #include <HTTPClient.h> //https://github.com/espressif/arduino-esp32
 #include <AutoConnect.h> //https://github.com/Hieromon/AutoConnect
 
+#include <Arduino.h>
+
+#include "config.h"
+
+
 #define CORE1 0
 
 AutoConnect Portal;
@@ -20,12 +25,16 @@ const int pin_btn3 = 19; // :)
 // Input pins for event code
 const int dips_input[6] = {14, 27, 26, 25, 33, 32};
 
-// Edit these
+/*
+  These values are defined  in config.h which is local to your environment.
+  Please adapt these to your needs.
+*/
+/*
 const char *url = "";
 const char *ingest_api_key = "";
 const char *hotspot_name = "EventBox";
 const char *hotspot_password = "";
-
+*/
 
 unsigned long last_data_push = 0;
 unsigned long last_button_push = 0;
@@ -55,33 +64,81 @@ int positiveValue = 0;
 
 String eventCode = "";
 
-void setup() {
-  Serial.begin(9600);
-  delay(20);
-  pinMode(pin_r, OUTPUT);
-  pinMode(pin_g, OUTPUT);
-  pinMode(pin_b, OUTPUT);
-  pinMode(pin_btn1, INPUT);
-  pinMode(pin_btn2, INPUT);
-  pinMode(pin_btn3, INPUT);
 
-  for (int i = 0; i < 6; i++)
+void valueReset(){
+  negativeValue = 0;
+  neutralValue = 0;
+  positiveValue = 0;
+}
+
+void diodeLightReset()
+{
+  digitalWrite(pin_r, LOW);
+  digitalWrite(pin_g, LOW);
+  digitalWrite(pin_b, LOW);
+}
+
+void diodeBlink()
+{
+  diodeLightReset();
+  lightBlink = true;
+  last_light_blink = millis();
+}
+
+
+void buttonPush(){
+  buttonIsPushed = true;
+  diodeBlink();
+  buttonBlink = true;
+  digitalWrite(pin_g, HIGH);
+  debounce_counter = 0;
+}
+
+void diodeControl(){
+  if (!lightBlink)
   {
-    pinMode(dips_input[i], INPUT);
+    diodeLightReset();
+    digitalWrite(pin_b, HIGH);
   }
 
-  Config.apid = hotspot_name;
-  Config.psk = hotspot_password;
-  Config.autoReconnect = true;
-  Config.immediateStart = true;
-  Portal.config(Config);
+  if (WiFi.isConnected() == 0 && !lightBlink)
+  {
+    diodeBlink();
+    digitalWrite(pin_b, HIGH);
+  }
 
-  xTaskCreate(loopTwo, "loopTwo", 8192, NULL, 1, NULL);
-  Portal.begin();
-  setupDone = true;
-  last_data_push = millis();
-
+  if (lightBlink && last_light_blink + 200 < millis())
+    {
+      if (!buttonBlink)
+      {
+        diodeLightReset();
+      }
+      else
+      {
+        lightBlink = false;
+        buttonBlink = false;
+        diodeLightReset();
+        digitalWrite(pin_b, HIGH);
+        last_light_blink = millis();
+      }
+      if (last_light_blink + 400 < millis())
+      {
+        lightBlink = false;
+        last_light_blink = millis();
+      }
+    }
 }
+
+void printPushes()
+{
+  Serial.print("postive: ");
+  Serial.print(positivePushCounter);
+  Serial.print(" neutral: ");
+  Serial.print(neutralPushCounter);
+  Serial.print(" negative: ");
+  Serial.println(negativePushCounter);
+}
+
 
 void loop() {
   
@@ -209,76 +266,31 @@ void loopTwo(void *pvParameters) {
   }
 }
 
-void valueReset(){
-  negativeValue = 0;
-  neutralValue = 0;
-  positiveValue = 0;
-}
 
+void setup() {
+  Serial.begin(9600);
+  delay(20);
+  pinMode(pin_r, OUTPUT);
+  pinMode(pin_g, OUTPUT);
+  pinMode(pin_b, OUTPUT);
+  pinMode(pin_btn1, INPUT);
+  pinMode(pin_btn2, INPUT);
+  pinMode(pin_btn3, INPUT);
 
-void buttonPush(){
-  buttonIsPushed = true;
-  diodeBlink();
-  buttonBlink = true;
-  digitalWrite(pin_g, HIGH);
-  debounce_counter = 0;
-}
-
-void diodeControl(){
-  if (!lightBlink)
+  for (int i = 0; i < 6; i++)
   {
-    diodeLightReset();
-    digitalWrite(pin_b, HIGH);
+    pinMode(dips_input[i], INPUT);
   }
 
-  if (WiFi.isConnected() == 0 && !lightBlink)
-  {
-    diodeBlink();
-    digitalWrite(pin_b, HIGH);
-  }
+  Config.apid = hotspot_name;
+  Config.psk = hotspot_password;
+  Config.autoReconnect = true;
+  Config.immediateStart = true;
+  Portal.config(Config);
 
-  if (lightBlink && last_light_blink + 200 < millis())
-    {
-      if (!buttonBlink)
-      {
-        diodeLightReset();
-      }
-      else
-      {
-        lightBlink = false;
-        buttonBlink = false;
-        diodeLightReset();
-        digitalWrite(pin_b, HIGH);
-        last_light_blink = millis();
-      }
-      if (last_light_blink + 400 < millis())
-      {
-        lightBlink = false;
-        last_light_blink = millis();
-      }
-    }
-}
+  xTaskCreate(loopTwo, "loopTwo", 8192, NULL, 1, NULL);
+  Portal.begin();
+  setupDone = true;
+  last_data_push = millis();
 
-void diodeLightReset()
-{
-  digitalWrite(pin_r, LOW);
-  digitalWrite(pin_g, LOW);
-  digitalWrite(pin_b, LOW);
-}
-
-void diodeBlink()
-{
-  diodeLightReset();
-  lightBlink = true;
-  last_light_blink = millis();
-}
-
-void printPushes()
-{
-  Serial.print("postive: ");
-  Serial.print(positivePushCounter);
-  Serial.print(" neutral: ");
-  Serial.print(neutralPushCounter);
-  Serial.print(" negative: ");
-  Serial.println(negativePushCounter);
 }
