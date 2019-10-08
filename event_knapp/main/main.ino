@@ -41,7 +41,12 @@ int positivePushCounter = 0;
 int neutralPushCounter = 0;
 int negativePushCounter = 0;
 
-int debounce_count = 500;
+int lastSentPositivePushCounter = 0;
+int lastSentNeutralPushCounter = 0;
+int lastSentNegativePushCounter = 0;
+
+
+int debounce_count = 1000;
 int debounce_counter = 0;
 
 int negativeValue = 0;
@@ -82,7 +87,7 @@ void loop() {
   
   Portal.handleClient();
   
-    String curr_eventCode = "";
+  String curr_eventCode = "";
   for (int i = 0; i < 6; i++)
   {
     int pin_i = digitalRead(dips_input[i]);
@@ -92,13 +97,14 @@ void loop() {
   if (last_data_push + 30000 < millis() || curr_eventCode != eventCode)
   {
     int send_negative = negativePushCounter;
-    int send_nuteral = neutralPushCounter;
+    int send_neutral = neutralPushCounter;
     int send_positive = positivePushCounter;
 
     if (WiFi.isConnected() == 1)
     {
-      if (send_negative != 0 || send_nuteral != 0 || send_positive != 0)
+      if (lastSentNegativePushCounter < send_negative || lastSentNeutralPushCounter < send_neutral || lastSentPositivePushCounter < send_positive)
       {
+
         HTTPClient http;
         http.begin(url);
         http.addHeader("Content-Type", "application/json");
@@ -109,7 +115,7 @@ void loop() {
         post += ", \"negative_count\": ";
         post += send_negative;
         post += ", \"neutral_count\": ";
-        post += send_nuteral;
+        post += send_neutral;
         post += ", \"positive_count\": ";
         post += send_positive;
         post += "\"}";
@@ -123,6 +129,9 @@ void loop() {
           Serial.println(response);
           Serial.println(http.getString());
 
+          lastSentPositivePushCounter = send_positive;
+          lastSentNeutralPushCounter = send_neutral;
+          lastSentNegativePushCounter = send_negative;
           //negativePushCounter -= send_negative;
           //neutralPushCounter -= send_nuteral;
           //positivePushCounter -= send_positive;
@@ -135,9 +144,11 @@ void loop() {
         }
         http.end();
       }
+      last_data_push = millis();
     }
-
-    last_data_push = millis();
+    else{
+      Portal.begin();
+    }
   }
 
   if (eventCode != curr_eventCode)
