@@ -234,7 +234,7 @@ void diodeControl(){
   if (WiFi.isConnected() == 0 && !lightBlink)
   {
     diodeBlink();
-    digitalWrite(pin_r, HIGH);
+    digitalWrite(pin_b, HIGH);
   }
 
   if (lightBlink && last_light_blink + 200 < millis())
