@@ -104,7 +104,9 @@ void loop() {
         http.addHeader("Content-Type", "application/json");
         http.addHeader("x-api-key", ingest_api_key);
 
-        String post = "{\"negative_count\": ";
+        String post = "{\"event_code\": ";
+        post += eventCode;
+        post += ", \"negative_count\": ";
         post += send_negative;
         post += ", \"neutral_count\": ";
         post += send_nuteral;
@@ -121,9 +123,9 @@ void loop() {
           Serial.println(response);
           Serial.println(http.getString());
 
-          negativePushCounter -= send_negative;
-          neutralPushCounter -= send_nuteral;
-          positivePushCounter -= send_positive;
+          //negativePushCounter -= send_negative;
+          //neutralPushCounter -= send_nuteral;
+          //positivePushCounter -= send_positive;
         }
         else
         {
