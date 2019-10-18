@@ -36,7 +36,6 @@ const char *hotspot_password = "";
 
 unsigned long last_data_push = 0;
 unsigned long last_button_push = 0;
-unsigned long last_eventCode_check = 0;
 unsigned long last_light_blink = 0;
 
 bool lightBlink = true;
@@ -52,14 +51,12 @@ int lastSentPositivePushCounter = 0;
 int lastSentNeutralPushCounter = 0;
 int lastSentNegativePushCounter = 0;
 
-int debounce_count = 1000;
+int debounce_count = 10000;
 int debounce_counter = 0;
 
 int negativeValue = 0;
 int neutralValue = 0;
 int positiveValue = 0;
-
-String eventCode = "";
 
 void valueReset()
 {
@@ -142,14 +139,7 @@ void loop()
 
 	Portal.handleClient();
 
-	String curr_eventCode = "";
-	for (int i = 0; i < 6; i++)
-	{
-		int pin_i = digitalRead(dips_input[i]);
-		curr_eventCode += String(pin_i);
-	}
-
-	if (last_data_push + 30000 < millis() || curr_eventCode != eventCode)
+	if (last_data_push + 30000 < millis())
 	{
 		int send_negative = negativePushCounter;
 		int send_neutral = neutralPushCounter;
@@ -165,17 +155,15 @@ void loop()
 				http.addHeader("Content-Type", "application/json");
 				http.addHeader("x-api-key", ingest_api_key);
 
-				String post = "{\"chip_id\": ";
+				String post = "{\"event_button_id\": ";
 				post += id;
-				post += ", \"event_code\": ";
-				post += eventCode;
 				post += ", \"negative_count\": ";
 				post += send_negative;
 				post += ", \"neutral_count\": ";
 				post += send_neutral;
 				post += ", \"positive_count\": ";
 				post += send_positive;
-				post += "\"}";
+				post += "}";
 
 				Serial.print("SENDING: ");
 				Serial.println(post);
@@ -189,9 +177,9 @@ void loop()
 					lastSentPositivePushCounter = send_positive;
 					lastSentNeutralPushCounter = send_neutral;
 					lastSentNegativePushCounter = send_negative;
-					//negativePushCounter -= send_negative;
-					//neutralPushCounter -= send_nuteral;
-					//positivePushCounter -= send_positive;
+					negativePushCounter -= send_negative;
+					neutralPushCounter -= send_neutral;
+					positivePushCounter -= send_positive;
 				}
 				else
 				{
@@ -208,17 +196,6 @@ void loop()
 			Portal.begin();
 		}
 	}
-
-	if (eventCode != curr_eventCode)
-	{
-		Serial.println("eventcode changed");
-		Serial.println("resetting counters...");
-		eventCode = curr_eventCode;
-		positivePushCounter = 0;
-		neutralPushCounter = 0;
-		negativePushCounter = 0;
-	}
-	last_eventCode_check = millis();
 }
 
 void loopTwo(void *pvParameters)
@@ -275,7 +252,7 @@ void loopTwo(void *pvParameters)
 
 void setup()
 {
-	Serial.begin(9600);
+	Serial.begin(115200);
 	delay(20);
 	pinMode(pin_r, OUTPUT);
 	pinMode(pin_g, OUTPUT);
@@ -293,7 +270,12 @@ void setup()
 	chipId = ESP.getEfuseMac();
 	id = (uint32_t)(chipId >> 32);
 
-	Config.apid = hotspot_name;
+	std:String apid = hotspot_name;
+	apid += id;
+
+	Serial.print(apid);
+
+	Config.apid = apid;
 	Config.psk = hotspot_password;
 	Config.autoReconnect = true;
 	Config.immediateStart = true;
