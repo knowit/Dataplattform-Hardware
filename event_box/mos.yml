@@ -48,6 +48,8 @@ filesystem:
 config_schema:
   - ["device.id", "knowit"]
   - ["device.password", "objectnet"]
+  - ["wifi.ap.ssid", "s", "knowit_event_box", { title: "SSID" }]
+  - ["wifi.ap.pass", "s", "knowit-event", { title: "wifi password" }]
 
   #PINS
   - ["pins.redButton", "i", 5, { title: "GPIO pin for red button" }]
@@ -63,6 +65,9 @@ libs:
   - origin: https://github.com/mongoose-os-libs/rpc-service-config
   - origin: https://github.com/mongoose-os-libs/rpc-service-fs
   - origin: https://github.com/mongoose-os-libs/rpc-uart
+  - origin: https://github.com/mongoose-os-libs/http-server
+  - origin: https://github.com/mongoose-os-libs/wifi
+  - origin: https://github.com/mongoose-os-libs/wifi-setup-web-ui
   - origin: https://github.com/mongoose-os-libs/aws
 
 # Used by the mos tool to catch mos binaries incompatible with this file format

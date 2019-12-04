@@ -17,6 +17,7 @@
 
 #include "mgos.h"
 #include "mgos_mqtt.h"
+#include <string.h>
 
 static void publish(const char *topic, const char *fmt, ...)
 {
@@ -43,9 +44,6 @@ static void timer_cb(void *arg)
 #endif
   (void)arg;
 
-  //mgos_gpio_toggle(mgos_sys_config_get_pins_redLED());
-  //mgos_mqtt_pub("johannesTopic", "{hello : world}", 0, 1, 0);
-
   int read = mgos_gpio_read(mgos_sys_config_get_pins_redButton());
 
   LOG(LL_INFO, ("RED BUTTON %d", read));
@@ -54,24 +52,30 @@ static void timer_cb(void *arg)
 static void button_cb(int pin, void *arg)
 {
   int led_pin;
+  char button[100];
   if (pin == mgos_sys_config_get_pins_redButton())
   {
     led_pin = mgos_sys_config_get_pins_redLED();
+    strncpy(button, "negative", sizeof(button));
   }
   else if (pin == mgos_sys_config_get_pins_greenButton())
   {
     led_pin = mgos_sys_config_get_pins_greenLED();
+    strncpy(button, "positive", sizeof(button));
   }
   else
   {
     led_pin = mgos_sys_config_get_pins_blueLED();
+    strncpy(button, "neutral", sizeof(button));
   }
+  strncat(button, "_count", sizeof(button) - strlen(button) - 1);
   mgos_gpio_toggle(led_pin);
 
-  char *format_str = "{ pathParameters: {type: johannesTopic }, body: {id: %S, negative_count: %d }}";
-  publish("iot/johannesTopic", format_str, "123", 1);
+  char *format_str = "{ pathParameters: {type: EventBox }, body: {id: %Q, %Q: %d }}";
+  publish("iot/EventBox", format_str, button, button, 1);
 
-  LOG(LL_INFO, ("PRESSED BUTTON %d led_pin %d", pin, led_pin));
+  LOG(LL_INFO, ("PRESSED BUTTON %s with pin  %d  and led_pin %d", button, pin, led_pin));
+  LOG(LL_INFO, ("fmt: %s", format_str));
 }
 
 enum mgos_app_init_result mgos_app_init(void)
@@ -79,9 +83,6 @@ enum mgos_app_init_result mgos_app_init(void)
 #ifdef LED_PIN
   mgos_gpio_setup_output(LED_PIN, 0);
 #endif
-  mgos_set_timer(1000 * 10 /* ms */, MGOS_TIMER_REPEAT, timer_cb, NULL);
-  mgos_gpio_setup_input(mgos_sys_config_get_pins_redButton(), 0);
-  bool mgos_gpio_blink(int pin, int on_ms, int off_ms);
 
   int red_button_pin = mgos_sys_config_get_pins_redButton();
   int green_button_pin = mgos_sys_config_get_pins_greenButton();
@@ -95,7 +96,7 @@ enum mgos_app_init_result mgos_app_init(void)
   mgos_gpio_setup_output(green_LED_pin, 0);
   mgos_gpio_setup_output(blue_LED_pin, 0);
 
-  int debounce_ms = 50;
+  int debounce_ms = 80;
   mgos_gpio_set_button_handler(red_button_pin, 0, 1, debounce_ms, button_cb, NULL);
   mgos_gpio_set_button_handler(green_button_pin, 0, 1, debounce_ms, button_cb, NULL);
   mgos_gpio_set_button_handler(yellow_button_pin, 0, 1, debounce_ms, button_cb, NULL);
