@@ -48,8 +48,6 @@ sources:
 config_schema:
   - ["device.id", "knowit"]
   - ["device.password", "objectnet"]
-  - ["wifi.ap.ssid", "s", "knowit_event_box", { title: "SSID" }]
-  - ["wifi.ap.pass", "s", "knowit-event", { title: "wifi password" }]
 
   #PINS
   - ["pins.redButton", "i", 5, { title: "GPIO pin for red button" }]
@@ -58,6 +56,39 @@ config_schema:
   - ["pins.redLED", "i", 4, { title: "GPIO pin for red LED" }]
   - ["pins.greenLED", "i", 16, { title: "GPIO pin for green LED" }]
   - ["pins.blueLED", "i", 17, { title: "GPIO pin for blue LED" }]
+
+  #WIFI
+  - ["wifi.ap.ssid", "s", "knowit_event_box", { title: "SSID" }]
+  - ["wifi.ap.pass", "s", "knowit-event", { title: "wifi password" }]
+  - [
+      "wifi.ap.keep_enabled",
+      "b",
+      true,
+      { title: "Keep AP enabled when station is on" },
+    ]
+  - ["wifi.ap.enable", "b", true, { title: "enable ap" }]
+
+  #Captive portal
+  - [
+      "cportal.enable",
+      "b",
+      true,
+      { title: "Enable WiFi captive portal on device boot" },
+    ]
+  - [
+      "cportal.any",
+      "b",
+      true,
+      { title: "Return index file for any non-hostname matching requests" },
+    ]
+  - [
+      "cportal.ip_redirect",
+      "b",
+      true,
+      {
+        title: "Send 302 redirect to configured hostname when IP directly accessed",
+      },
+    ]
 
 libs:
   - origin: https://github.com/mongoose-os-libs/boards
@@ -69,6 +100,14 @@ libs:
   - origin: https://github.com/mongoose-os-libs/wifi
   - origin: https://github.com/mongoose-os-libs/wifi-setup-web-ui
   - origin: https://github.com/mongoose-os-libs/aws
+  - origin: https://github.com/tripflex/captive-portal
+  #- origin: https://github.com/tripflex/provision-wifi
+  #- origin: https://github.com/tripflex/captive-portal-wifi-stack
+
+cdefs:
+  MG_ENABLE_DNS: 1
+  MG_ENABLE_DNS_SERVER: 1
+  MGOS_WIFI_ENABLE_AP_STA: 1
 
 # Used by the mos tool to catch mos binaries incompatible with this file format
 manifest_version: 2017-09-29

@@ -21,6 +21,7 @@
 
 #include <string.h>
 
+static const char *s_our_ip = "192.168.4.1";
 bool blinking = false;
 struct mg_str MAC;
 
@@ -140,24 +141,20 @@ static void button_cb(int pin, void *arg)
   char button[100];
   if (pin == mgos_sys_config_get_pins_redButton())
   {
-    //led_pin = mgos_sys_config_get_pins_redLED();
     strncpy(button, "negative", sizeof(button));
     negative++;
   }
   else if (pin == mgos_sys_config_get_pins_greenButton())
   {
-    //led_pin = mgos_sys_config_get_pins_greenLED();
     strncpy(button, "positive", sizeof(button));
     positive++;
   }
   else
   {
-    //led_pin = mgos_sys_config_get_pins_blueLED();
     strncpy(button, "neutral", sizeof(button));
     neutral++;
   }
   strncat(button, "_count", sizeof(button) - strlen(button) - 1);
-  //mgos_gpio_toggle(led_pin);
 
   char *format_str = "{ pathParameters: {type: EventBox }, body: {id: %Q, positive_count: %d, neutral_count: %d, negative_count: %d }}";
   uint16_t packet_id = publish("iot/EventBox", format_str, MAC.p,
@@ -171,8 +168,21 @@ static void button_cb(int pin, void *arg)
   }
 }
 
+void ap_enabled(bool state)
+{
+  struct mgos_config_wifi_ap ap_cfg;
+  memcpy(&ap_cfg, mgos_sys_config_get_wifi_ap(), sizeof(ap_cfg));
+  ap_cfg.enable = state;
+  if (!mgos_wifi_setup_ap(&ap_cfg))
+  {
+    LOG(LL_ERROR, ("Wifi AP setup failed"));
+  }
+}
+
 enum mgos_app_init_result mgos_app_init(void)
 {
+  ap_enabled(true);
+
   MAC = mg_mk_str(mgos_sys_ro_vars_get_mac_address());
   pending.lock = mgos_rlock_create();
 
