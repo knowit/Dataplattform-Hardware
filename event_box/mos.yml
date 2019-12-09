@@ -49,13 +49,21 @@ config_schema:
   - ["device.id", "knowit"]
   - ["device.password", "objectnet"]
 
-  #PINS
+  #PINS event
   - ["pins.redButton", "i", 5, { title: "GPIO pin for red button" }]
   - ["pins.yellowButton", "i", 18, { title: "GPIO pin for yellow button" }]
   - ["pins.greenButton", "i", 19, { title: "GPIO pin for green button" }]
   - ["pins.redLED", "i", 4, { title: "GPIO pin for red LED" }]
   - ["pins.greenLED", "i", 16, { title: "GPIO pin for green LED" }]
   - ["pins.blueLED", "i", 17, { title: "GPIO pin for blue LED" }]
+
+  #PINS mood
+  #- ["pins.redButton", "i", 25, { title: "GPIO pin for red button" }]
+  #- ["pins.yellowButton", "i", 26, { title: "GPIO pin for yellow button" }]
+  #- ["pins.greenButton", "i", 19, { title: "GPIO pin for green button" }]
+  #- ["pins.redLED", "i", 27, { title: "GPIO pin for red LED" }]
+  #- ["pins.greenLED", "i", 14, { title: "GPIO pin for green LED" }]
+  #- ["pins.blueLED", "i", 12, { title: "GPIO pin for blue LED" }]
 
   #WIFI
   - ["wifi.ap.ssid", "s", "knowit_event_box", { title: "SSID" }]
@@ -101,8 +109,6 @@ libs:
   - origin: https://github.com/mongoose-os-libs/wifi-setup-web-ui
   - origin: https://github.com/mongoose-os-libs/aws
   - origin: https://github.com/tripflex/captive-portal
-  #- origin: https://github.com/tripflex/provision-wifi
-  #- origin: https://github.com/tripflex/captive-portal-wifi-stack
 
 cdefs:
   MG_ENABLE_DNS: 1

@@ -19,9 +19,12 @@
 #include "mgos_mqtt.h"
 #include "mgos_ro_vars.h"
 
+#include <inttypes.h>
 #include <string.h>
 
 static const char *s_our_ip = "192.168.4.1";
+static const char *filename = "pending";
+uint32_t id = 0;
 bool blinking = false;
 struct mg_str MAC;
 
@@ -35,6 +38,31 @@ struct pending_events
 
 struct pending_events pending = {0};
 
+static inline void init_id()
+{
+  uint64_t mac = 0;
+  device_get_mac_address((uint8_t *)&mac);
+  id = mac >> 32;
+}
+
+static void write_pending()
+{
+  FILE *f = fopen(filename, "w+");
+  fwrite(&pending, sizeof(uint16_t), 3, f);
+  fclose(f);
+}
+
+static void read_pending()
+{
+  FILE *f = fopen(filename, "r");
+  if (f)
+  {
+    LOG(LL_INFO, ("file exists"));
+    fread(&pending, sizeof(uint16_t), 3, f);
+  }
+  fclose(f);
+}
+
 static bool unsent_events(struct pending_events pending)
 {
   return (pending.positive || pending.negative || pending.negative);
@@ -46,6 +74,7 @@ static void increase_unsent_events(uint16_t positive, uint16_t neutral, uint16_t
   pending.positive += positive;
   pending.neutral += neutral;
   pending.negative += negative;
+  write_pending();
   mgos_runlock(pending.lock);
 }
 
@@ -55,6 +84,7 @@ void clear_unsent_events()
   pending.positive = 0;
   pending.neutral = 0;
   pending.negative = 0;
+  write_pending();
   mgos_runlock(pending.lock);
 }
 
@@ -114,6 +144,7 @@ static void timer_cb(void *arg)
       pending.positive = 0;
       pending.neutral = 0;
       pending.negative = 0;
+      write_pending();
     }
     mgos_runlock(pending.lock);
   }
@@ -183,7 +214,12 @@ enum mgos_app_init_result mgos_app_init(void)
 {
   ap_enabled(true);
 
+  read_pending();
+  LOG(LL_INFO, ("pending negative %d, neutral %d,  positive %d",
+                pending.negative, pending.neutral, pending.positive));
+
   MAC = mg_mk_str(mgos_sys_ro_vars_get_mac_address());
+  LOG(LL_INFO, ("______________--MAC %s", mgos_sys_ro_vars_get_mac_address()));
   pending.lock = mgos_rlock_create();
 
   int red_button_pin = mgos_sys_config_get_pins_redButton();
@@ -204,6 +240,9 @@ enum mgos_app_init_result mgos_app_init(void)
   mgos_gpio_set_button_handler(yellow_button_pin, 0, 1, debounce_ms, button_cb, NULL);
 
   mgos_set_timer(1000 * 10 /* ms */, MGOS_TIMER_REPEAT | MGOS_TIMER_RUN_NOW, timer_cb, NULL);
+
+  init_id();
+  LOG(LL_INFO, ("*******id %d******@", id));
 
   return MGOS_APP_INIT_SUCCESS;
 }
