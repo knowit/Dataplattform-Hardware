@@ -22,20 +22,14 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include "pending.h"
+
 static const char *s_our_ip = "192.168.4.1";
-static const char *filename = "pending";
+static const char *format_str = "{ pathParameters: {type: EventBox },"
+                                "body: {id: %d, positive_count: %d,"
+                                "neutral_count: %d, negative_count: %d }}";
 uint32_t id = 0;
 bool blinking = false;
-struct mg_str MAC;
-
-struct pending_events
-{
-  uint16_t positive;
-  uint16_t neutral;
-  uint16_t negative;
-  struct mgos_rlock_type *lock;
-};
-
 struct pending_events pending = {0};
 
 static inline void init_id()
@@ -43,49 +37,6 @@ static inline void init_id()
   uint64_t mac = 0;
   device_get_mac_address((uint8_t *)&mac);
   id = mac >> 32;
-}
-
-static void write_pending()
-{
-  FILE *f = fopen(filename, "w+");
-  fwrite(&pending, sizeof(uint16_t), 3, f);
-  fclose(f);
-}
-
-static void read_pending()
-{
-  FILE *f = fopen(filename, "r");
-  if (f)
-  {
-    LOG(LL_INFO, ("file exists"));
-    fread(&pending, sizeof(uint16_t), 3, f);
-  }
-  fclose(f);
-}
-
-static bool unsent_events(struct pending_events pending)
-{
-  return (pending.positive || pending.negative || pending.negative);
-}
-
-static void increase_unsent_events(uint16_t positive, uint16_t neutral, uint16_t negative)
-{
-  mgos_rlock(pending.lock);
-  pending.positive += positive;
-  pending.neutral += neutral;
-  pending.negative += negative;
-  write_pending();
-  mgos_runlock(pending.lock);
-}
-
-void clear_unsent_events()
-{
-  mgos_rlock(pending.lock);
-  pending.positive = 0;
-  pending.neutral = 0;
-  pending.negative = 0;
-  write_pending();
-  mgos_runlock(pending.lock);
 }
 
 static uint16_t
@@ -101,6 +52,23 @@ publish(const char *topic, const char *fmt, ...)
   return mgos_mqtt_pub(topic, message, n, 1, 0);
 }
 
+static void handle_unsent_events()
+{
+  mgos_rlock(pending.lock);
+
+  uint16_t packet_id = publish("iot/EventBox", format_str, id,
+                               pending.positive, pending.neutral, pending.negative);
+
+  if (packet_id > 0)
+  {
+    pending.positive = 0;
+    pending.neutral = 0;
+    pending.negative = 0;
+    write_pending(pending);
+  }
+  mgos_runlock(pending.lock);
+}
+
 static void timer_cb(void *arg)
 {
   static bool s_tick_tock = false;
@@ -109,15 +77,11 @@ static void timer_cb(void *arg)
        mgos_uptime(), (unsigned long)mgos_get_heap_size(),
        (unsigned long)mgos_get_free_heap_size()));
   s_tick_tock = !s_tick_tock;
-  (void)arg;
-
   LOG(LL_INFO, ("pending negative %d, neutral %d,  positive %d",
                 pending.negative, pending.neutral, pending.positive));
-  int read = mgos_gpio_read(mgos_sys_config_get_pins_redButton());
 
   bool connected = mgos_mqtt_global_is_connected();
   int blue_LED_pin = mgos_sys_config_get_pins_blueLED();
-  LOG(LL_INFO, ("RED BUTTON %d blink %d, connect %d, blue %d", read, blinking, connected, mgos_gpio_read(blue_LED_pin)));
   if (connected && blinking)
   {
     LOG(LL_INFO, ("MQTT Connected"));
@@ -131,23 +95,12 @@ static void timer_cb(void *arg)
     mgos_gpio_blink(blue_LED_pin, 400, 400);
     blinking = true;
   }
+
   if (unsent_events(pending) && connected)
   {
-    mgos_rlock(pending.lock);
-
-    char *format_str = "{ pathParameters: {type: EventBox }, body: {id: %Q, positive_count: %d, neutral_count: %d, negative_count: %d }}";
-    uint16_t packet_id = publish("iot/EventBox", format_str, MAC.p,
-                                 pending.positive, pending.neutral, pending.negative);
-
-    if (packet_id > 0)
-    {
-      pending.positive = 0;
-      pending.neutral = 0;
-      pending.negative = 0;
-      write_pending();
-    }
-    mgos_runlock(pending.lock);
+    handle_unsent_events();
   }
+  (void)arg;
 }
 
 static void button_blink_cb(void *arg)
@@ -158,44 +111,43 @@ static void button_blink_cb(void *arg)
   mgos_gpio_write(blue_led, 1);
 }
 
-static void button_cb(int pin, void *arg)
+static void blink_green()
 {
-  int positive = 0;
-  int neutral = 0;
-  int negative = 0;
   mgos_set_timer(300 /* ms */, 0, button_blink_cb, NULL);
 
   int green_led = mgos_sys_config_get_pins_greenLED();
   int blue_led = mgos_sys_config_get_pins_blueLED();
   mgos_gpio_write(green_led, 1);
   mgos_gpio_write(blue_led, 0);
-  char button[100];
+}
+
+static void button_cb(int pin, void *arg)
+{
+  blink_green();
+
+  int positive = 0;
+  int neutral = 0;
+  int negative = 0;
   if (pin == mgos_sys_config_get_pins_redButton())
   {
-    strncpy(button, "negative", sizeof(button));
     negative++;
   }
   else if (pin == mgos_sys_config_get_pins_greenButton())
   {
-    strncpy(button, "positive", sizeof(button));
     positive++;
   }
   else
   {
-    strncpy(button, "neutral", sizeof(button));
     neutral++;
   }
-  strncat(button, "_count", sizeof(button) - strlen(button) - 1);
 
-  char *format_str = "{ pathParameters: {type: EventBox }, body: {id: %Q, positive_count: %d, neutral_count: %d, negative_count: %d }}";
-  uint16_t packet_id = publish("iot/EventBox", format_str, MAC.p,
+  uint16_t packet_id = publish("iot/EventBox", format_str, id,
                                positive, neutral, negative);
 
-  LOG(LL_INFO, ("PRESSED BUTTON %s with pin %d, packet_id %u", button, pin, packet_id));
-  LOG(LL_INFO, ("fmt: %s", format_str));
+  LOG(LL_INFO, (format_str, id, positive, neutral, negative));
   if (packet_id < 1)
   {
-    increase_unsent_events(positive, neutral, negative);
+    increase_unsent_events(positive, neutral, negative, &pending);
   }
 }
 
@@ -210,22 +162,20 @@ void ap_enabled(bool state)
   }
 }
 
-enum mgos_app_init_result mgos_app_init(void)
+static inline void init_buttons()
 {
-  ap_enabled(true);
-
-  read_pending();
-  LOG(LL_INFO, ("pending negative %d, neutral %d,  positive %d",
-                pending.negative, pending.neutral, pending.positive));
-
-  MAC = mg_mk_str(mgos_sys_ro_vars_get_mac_address());
-  LOG(LL_INFO, ("______________--MAC %s", mgos_sys_ro_vars_get_mac_address()));
-  pending.lock = mgos_rlock_create();
-
   int red_button_pin = mgos_sys_config_get_pins_redButton();
   int green_button_pin = mgos_sys_config_get_pins_greenButton();
   int yellow_button_pin = mgos_sys_config_get_pins_yellowButton();
 
+  int debounce_ms = 80;
+  mgos_gpio_set_button_handler(red_button_pin, 0, 1, debounce_ms, button_cb, NULL);
+  mgos_gpio_set_button_handler(green_button_pin, 0, 1, debounce_ms, button_cb, NULL);
+  mgos_gpio_set_button_handler(yellow_button_pin, 0, 1, debounce_ms, button_cb, NULL);
+}
+
+static inline void init_led()
+{
   int red_LED_pin = mgos_sys_config_get_pins_redLED();
   int green_LED_pin = mgos_sys_config_get_pins_greenLED();
   int blue_LED_pin = mgos_sys_config_get_pins_blueLED();
@@ -233,16 +183,23 @@ enum mgos_app_init_result mgos_app_init(void)
   mgos_gpio_setup_output(red_LED_pin, 0);
   mgos_gpio_setup_output(green_LED_pin, 0);
   mgos_gpio_setup_output(blue_LED_pin, 0);
+}
 
-  int debounce_ms = 80;
-  mgos_gpio_set_button_handler(red_button_pin, 0, 1, debounce_ms, button_cb, NULL);
-  mgos_gpio_set_button_handler(green_button_pin, 0, 1, debounce_ms, button_cb, NULL);
-  mgos_gpio_set_button_handler(yellow_button_pin, 0, 1, debounce_ms, button_cb, NULL);
+enum mgos_app_init_result mgos_app_init(void)
+{
+  ap_enabled(true);
+
+  read_pending(&pending);
+  pending.lock = mgos_rlock_create();
+  LOG(LL_INFO, ("pending negative %d, neutral %d,  positive %d",
+                pending.negative, pending.neutral, pending.positive));
+
+  init_led();
+  init_buttons();
+  init_id();
+  LOG(LL_INFO, ("Event Box ID: %d", id));
 
   mgos_set_timer(1000 * 10 /* ms */, MGOS_TIMER_REPEAT | MGOS_TIMER_RUN_NOW, timer_cb, NULL);
-
-  init_id();
-  LOG(LL_INFO, ("*******id %d******@", id));
 
   return MGOS_APP_INIT_SUCCESS;
 }
