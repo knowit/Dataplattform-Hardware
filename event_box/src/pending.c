@@ -6,7 +6,7 @@ void write_pending(struct pending_events pending)
 {
   FILE *f = fopen(filename, "w+");
   fwrite(&pending, sizeof(uint16_t), 3, f);
-  fputs(pending.event_id, f);
+  //fputs(pending.event_id, f);
   fclose(f);
 }
 
@@ -22,7 +22,7 @@ void read_pending(struct pending_events *pending)
   {
     LOG(LL_INFO, ("file exists"));
     fread(pending, sizeof(uint16_t), 3, f);
-    fgets(pending->event_id, sizeof(pending->event_id), f);
+    //fgets(pending->event_id, sizeof(pending->event_id), f);
   }
   fclose(f);
 }

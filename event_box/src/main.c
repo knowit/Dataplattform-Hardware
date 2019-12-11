@@ -26,7 +26,7 @@
 
 static const char *s_our_ip = "192.168.4.1";
 static const char *format_str = "{ pathParameters: {type: EventBox },"
-                                "body: {id: %d, event_id: %Q, positive_count: %d,"
+                                "body: {id: %d, positive_count: %d,"
                                 "neutral_count: %d, negative_count: %d }}";
 uint32_t id = 0;
 char *event_id = NULL;
@@ -61,7 +61,7 @@ static void handle_unsent_events()
 {
   mgos_rlock(pending.lock);
 
-  uint16_t packet_id = publish("iot/EventBox", format_str, id, pending.event_id,
+  uint16_t packet_id = publish("iot/EventBox", format_str, id,
                                pending.positive, pending.neutral, pending.negative);
 
   if (packet_id > 0)
@@ -155,11 +155,6 @@ static void timer_cb(void *arg)
     mgos_runlock(pending.lock);
   }
 
-  if (connected && !unsent_events(pending) && event_id == NULL)
-  {
-    publish("iot/EventIdRequest", "{ pathParameters: {type: EventBox },"
-                                  "body: {event_code: can_haz_plz}}");
-  }
   (void)arg;
 }
 
@@ -184,11 +179,6 @@ static void blink_once(int pin)
 
 static void button_cb(int pin, void *arg)
 {
-  if (event_id == NULL)
-  {
-    blink_once(mgos_sys_config_get_pins_redLED());
-    return;
-  }
   blink_once(mgos_sys_config_get_pins_greenLED());
 
   int positive = 0;
@@ -207,7 +197,7 @@ static void button_cb(int pin, void *arg)
     neutral++;
   }
 
-  uint16_t packet_id = publish("iot/EventBox", format_str, id, event_id,
+  uint16_t packet_id = publish("iot/EventBox", format_str, id,
                                positive, neutral, negative);
 
   LOG(LL_INFO, (format_str, id, positive, neutral, negative));
@@ -256,8 +246,6 @@ enum mgos_app_init_result mgos_app_init(void)
   LOG(LL_INFO, ("Event Box ID: %d", id));
 
   mgos_set_timer(1000 * 10 /* ms */, MGOS_TIMER_REPEAT | MGOS_TIMER_RUN_NOW, timer_cb, NULL);
-
-  mgos_mqtt_sub("iot/EventId", sub_handler, NULL);
 
   return MGOS_APP_INIT_SUCCESS;
 }
