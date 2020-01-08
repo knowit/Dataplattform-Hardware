@@ -78,7 +78,7 @@ config_schema:
     ]
 
   #LOCATION
-  - ["thing.location", "s", "knowit", {title: "The thing's location"}]
+  - ["thing.location", "s", "Lakkegata 53", {title: "The thing's location"}]
 
 
   #PINS
@@ -89,6 +89,7 @@ config_schema:
   - ["pins.ledr", "i", 5, {title: "GPIO pin for led"}]
   - ["pins.ledg", "i", 17, {title: "GPIO pin for led"}]
   - ["pins.ledb", "i", 16, {title: "GPIO pin for led"}]
+  - ["pins.noise", "i", 32, {title: "GPIO pin for noise sensor"}]
 
 libs:
   - origin: https://github.com/mongoose-os-libs/boards
