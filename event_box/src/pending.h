@@ -24,7 +24,7 @@ extern int num_pending_votes;
 
 /**
  * Returns true if there are any votes that have not been sent yet.
- * /
+ * */
 bool unsent_votes();
 
 /**
