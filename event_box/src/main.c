@@ -28,10 +28,6 @@
 
 static const char *s_our_ip = "192.168.4.1";
 static const char *topic = "iot/EventBox";
-static const char *old_format_str = "{ pathParameters: {type: EventBox },"
-                                    "body: {id: %d, time: %d, positive_count: %d,"
-                                    "neutral_count: %d, negative_count: %d }}";
-
 static const char *format_str = "{ pathParameters: {type: EventBox },"
                                 "body: {id: %d, time: %d, vote: %Q}}";
 
@@ -41,6 +37,9 @@ bool blinking = false;
 bool time_is_known = false;
 struct mgos_rlock_type *lock;
 
+/**
+ * Enables or disables the WiFi Access point.
+ * */
 void ap_enabled(bool state)
 {
   struct mgos_config_wifi_ap ap_cfg;
@@ -52,8 +51,7 @@ void ap_enabled(bool state)
   }
 }
 
-static uint16_t
-publish(const char *topic, const char *fmt, ...)
+static uint16_t publish(const char *topic, const char *fmt, ...)
 {
   char message[200];
   struct json_out json_message = JSON_OUT_BUF(message, sizeof(message));
@@ -65,6 +63,9 @@ publish(const char *topic, const char *fmt, ...)
   return mgos_mqtt_pub(topic, message, n, 1, 0);
 }
 
+/**
+ * Publish a vote using MQTT. Return value > 0 indicates success.
+ * */
 static uint16_t publish_vote(enum VoteType vote, uint32_t timestamp)
 {
   char *vote_str;
@@ -87,6 +88,9 @@ static uint16_t publish_vote(enum VoteType vote, uint32_t timestamp)
   return publish(topic, format_str, id, timestamp, vote_str);
 }
 
+/**
+ * Attempts to send any votes that have not been sent yet.
+ * */
 static void handle_unsent_votes()
 {
   mgos_rlock(lock);
@@ -115,6 +119,14 @@ static inline void init_id()
   id = mac >> 32;
 }
 
+
+/**
+ * This function is called periodically by a timer.
+ * If there is an active connection to the MQTT server the LED is set to blue.
+ * When there is no connection to MQTT the LED will blink blue.
+ * If MQTT is connected and there are pending votes then attempt to send
+ * the votes.
+ * */
 static void timer_cb(void *arg)
 {
   static bool s_tick_tock = false;
@@ -150,6 +162,9 @@ static void timer_cb(void *arg)
   (void)arg;
 }
 
+/**
+ * Is used by blink_once() to deactivate the LED.
+ * */
 static void button_blink_cb(void *arg)
 {
   int blue_led = mgos_sys_config_get_pins_blueLED();
@@ -157,6 +172,9 @@ static void button_blink_cb(void *arg)
   mgos_gpio_write(blue_led, 1);
 }
 
+/**
+ * Makes the given LED blink once.
+ * */
 static void blink_once(int pin)
 {
   mgos_set_timer(300 /* ms */, 0, button_blink_cb, (void *)pin);
@@ -166,6 +184,16 @@ static void blink_once(int pin)
   mgos_gpio_write(blue_led, 0);
 }
 
+/**
+ * Called whenever a button is pressed. 
+ * If current time is not known then we cant add a timestamp to new votes, so
+ * we blink the led red and return.
+ * 
+ * If current time is known we generate a vote based on which button was pressed.
+ * Then we try to send the vote, and if that does not work we store the vote 
+ * to try again later.
+ * 
+ * */
 static void button_cb(int pin, void *arg)
 {
   if (!time_is_known)
@@ -224,6 +252,10 @@ static inline void init_led()
   mgos_gpio_setup_output(blue_LED_pin, 0);
 }
 
+/**
+ * Is called when system time is changed, which indicates that sntp has started
+ * and updated system time.
+ * */
 static inline void time_change_cb(int ev, void *ev_data, void *userdata)
 {
   double delta = *(double *)(ev_data);
@@ -231,6 +263,10 @@ static inline void time_change_cb(int ev, void *ev_data, void *userdata)
   LOG(LL_INFO, ("time change Event: %lf", delta));
 }
 
+/**
+ * Enables the access point, calls initialization code and starts the timer 
+ * which repeatedly triggers a callback function.
+ * */
 enum mgos_app_init_result mgos_app_init(void)
 {
   ap_enabled(true);
