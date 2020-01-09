@@ -124,6 +124,7 @@ libs:
   - origin: https://github.com/mongoose-os-libs/wifi-setup-web-ui
   - origin: https://github.com/mongoose-os-libs/aws
   - origin: https://github.com/tripflex/captive-portal
+  - origin: https://github.com/mongoose-os-libs/sntp
 
 cdefs:
   MG_ENABLE_DNS: 1

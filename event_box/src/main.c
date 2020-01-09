@@ -18,20 +18,28 @@
 #include "mgos.h"
 #include "mgos_mqtt.h"
 #include "mgos_ro_vars.h"
+#include "mgos_event.h"
 
 #include <inttypes.h>
 #include <string.h>
 
 #include "pending.h"
+#include <time.h>
 
 static const char *s_our_ip = "192.168.4.1";
+static const char *topic = "iot/EventBox";
+static const char *old_format_str = "{ pathParameters: {type: EventBox },"
+                                    "body: {id: %d, time: %d, positive_count: %d,"
+                                    "neutral_count: %d, negative_count: %d }}";
+
 static const char *format_str = "{ pathParameters: {type: EventBox },"
-                                "body: {id: %d, positive_count: %d,"
-                                "neutral_count: %d, negative_count: %d }}";
+                                "body: {id: %d, time: %d, vote: %Q}}";
+
 uint32_t id = 0;
 char *event_id = NULL;
 bool blinking = false;
-struct pending_events pending = {0};
+bool time_is_known = false;
+struct mgos_rlock_type *lock;
 
 void ap_enabled(bool state)
 {
@@ -57,59 +65,47 @@ publish(const char *topic, const char *fmt, ...)
   return mgos_mqtt_pub(topic, message, n, 1, 0);
 }
 
-static void handle_unsent_events()
+static uint16_t publish_vote(enum VoteType vote, uint32_t timestamp)
 {
-  mgos_rlock(pending.lock);
-
-  uint16_t packet_id = publish("iot/EventBox", format_str, id,
-                               pending.positive, pending.neutral, pending.negative);
-
-  if (packet_id > 0)
+  char *vote_str;
+  switch (vote)
   {
-    pending.positive = 0;
-    pending.neutral = 0;
-    pending.negative = 0;
-    write_pending(pending);
+  case positive:
+    vote_str = "positive";
+    break;
+  case neutral:
+    vote_str = "neutral";
+    break;
+  case negative:
+    vote_str = "negative";
+    break;
+  default:
+    vote_str = "unknown";
+    break;
   }
-  mgos_runlock(pending.lock);
+
+  return publish(topic, format_str, id, timestamp, vote_str);
 }
 
-static void sub_handler(struct mg_connection *nc, const char *topic,
-                        int topic_len, const char *msg, int msg_len,
-                        void *ud)
+static void handle_unsent_votes()
 {
-  LOG(LL_INFO, ("Handling the event  on topic %s  with len %d  with msg %s and len %d like a boss!",
-                topic, topic_len, msg, msg_len));
+  mgos_rlock(lock);
+  LOG(LL_INFO, ("handle unsent num_pending %d", num_pending_votes));
 
-  char *e_id = NULL;
-  char *fmt = "{event_id: %Q}";
-  json_scanf(msg, msg_len, fmt, &e_id);
-  if (e_id)
+  int i = 0;
+  uint16_t packet_id = 0;
+  while (i < num_pending_votes)
   {
-    LOG(LL_INFO, ("received event_id %s", e_id));
-    /*
-    We are Getting a new Event_id, so we must make sure there are no more pending 
-    votes on the old event before we start accepting votes on the new event.
-    */
-    if (event_id == NULL || strcmp(event_id, e_id) == 0)
-    {
-      event_id = NULL;
-      mgos_rlock(pending.lock);
-      while (unsent_events(pending))
-      {
-        mgos_msleep(2000);
-        handle_unsent_events();
-      }
-      free(event_id);
-      event_id = e_id;
-      strncpy(pending.event_id, event_id, sizeof(pending.event_id) - 1);
-      mgos_runlock(pending.lock);
-    }
-    else
-    {
-      free(e_id);
-    }
+    packet_id = publish_vote(votes[i].vote, votes[i].timestamp);
+    if (packet_id == 0)
+      break;
+    i++;
   }
+
+  clear_pending_votes(i);
+  write_pending_votes();
+
+  mgos_runlock(lock);
 }
 
 static inline void init_id()
@@ -127,8 +123,6 @@ static void timer_cb(void *arg)
        mgos_uptime(), (unsigned long)mgos_get_heap_size(),
        (unsigned long)mgos_get_free_heap_size()));
   s_tick_tock = !s_tick_tock;
-  LOG(LL_INFO, ("pending negative %d, neutral %d,  positive %d",
-                pending.negative, pending.neutral, pending.positive));
 
   bool connected = mgos_mqtt_global_is_connected();
   int blue_LED_pin = mgos_sys_config_get_pins_blueLED();
@@ -148,11 +142,9 @@ static void timer_cb(void *arg)
     blinking = true;
   }
 
-  if (unsent_events(pending) && connected)
+  if (unsent_votes() && connected)
   {
-    mgos_rlock(pending.lock);
-    handle_unsent_events();
-    mgos_runlock(pending.lock);
+    handle_unsent_votes();
   }
 
   (void)arg;
@@ -160,9 +152,7 @@ static void timer_cb(void *arg)
 
 static void button_blink_cb(void *arg)
 {
-  int green_led = mgos_sys_config_get_pins_greenLED();
   int blue_led = mgos_sys_config_get_pins_blueLED();
-  //mgos_gpio_write(green_led, 0);
   mgos_gpio_write((int)arg, 0);
   mgos_gpio_write(blue_led, 1);
 }
@@ -171,7 +161,6 @@ static void blink_once(int pin)
 {
   mgos_set_timer(300 /* ms */, 0, button_blink_cb, (void *)pin);
 
-  //int green_led = mgos_sys_config_get_pins_greenLED();
   int blue_led = mgos_sys_config_get_pins_blueLED();
   mgos_gpio_write(pin, 1);
   mgos_gpio_write(blue_led, 0);
@@ -179,31 +168,36 @@ static void blink_once(int pin)
 
 static void button_cb(int pin, void *arg)
 {
+  if (!time_is_known)
+  {
+    blink_once(mgos_sys_config_get_pins_redLED());
+    return;
+  }
   blink_once(mgos_sys_config_get_pins_greenLED());
 
-  int positive = 0;
-  int neutral = 0;
-  int negative = 0;
+  enum VoteType vote;
   if (pin == mgos_sys_config_get_pins_redButton())
   {
-    negative++;
+    vote = negative;
   }
   else if (pin == mgos_sys_config_get_pins_greenButton())
   {
-    positive++;
+    vote = positive;
   }
   else
   {
-    neutral++;
+    vote = neutral;
   }
 
-  uint16_t packet_id = publish("iot/EventBox", format_str, id,
-                               positive, neutral, negative);
+  LOG(LL_INFO, ("time %d", (int)time(NULL)));
 
-  LOG(LL_INFO, (format_str, id, positive, neutral, negative));
+  uint16_t packet_id = publish_vote(vote, time(NULL));
+
   if (packet_id < 1)
   {
-    increase_unsent_events(positive, neutral, negative, &pending);
+    mgos_rlock(lock);
+    add_vote(vote, (int)time(NULL));
+    mgos_runlock(lock);
   }
 }
 
@@ -230,20 +224,26 @@ static inline void init_led()
   mgos_gpio_setup_output(blue_LED_pin, 0);
 }
 
+static inline void time_change_cb(int ev, void *ev_data, void *userdata)
+{
+  double delta = *(double *)(ev_data);
+  time_is_known = true;
+  LOG(LL_INFO, ("time change Event: %lf", delta));
+}
+
 enum mgos_app_init_result mgos_app_init(void)
 {
   ap_enabled(true);
 
-  read_pending(&pending);
-  pending.lock = mgos_rlock_create();
-
-  LOG(LL_INFO, ("pending negative %d, neutral %d,  positive %d",
-                pending.negative, pending.neutral, pending.positive));
+  read_pending_votes();
+  lock = mgos_rlock_create();
 
   init_led();
   init_buttons();
   init_id();
   LOG(LL_INFO, ("Event Box ID: %d", id));
+
+  mgos_event_add_handler(MGOS_EVENT_TIME_CHANGED, time_change_cb, NULL);
 
   mgos_set_timer(1000 * 10 /* ms */, MGOS_TIMER_REPEAT | MGOS_TIMER_RUN_NOW, timer_cb, NULL);
 
