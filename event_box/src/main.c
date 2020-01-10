@@ -106,7 +106,9 @@ static void handle_unsent_votes()
     i++;
   }
 
-  clear_pending_votes(i);
+  if (i > 0) {
+    clear_pending_votes(i);
+  }
   write_pending_votes();
 
   mgos_runlock(lock);
@@ -225,6 +227,7 @@ static void button_cb(int pin, void *arg)
   {
     mgos_rlock(lock);
     add_vote(vote, (int)time(NULL));
+    write_pending_votes();
     mgos_runlock(lock);
   }
 }
