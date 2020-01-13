@@ -52,6 +52,10 @@ void read_pending_votes()
   {
     LOG(LL_INFO, ("file exists"));
     fread(&num_pending_votes, sizeof(num_pending_votes), 1, f);
+    while (num_pending_votes > vote_array_size)
+    {
+      grow_vote_array();
+    }
     fread(votes, sizeof(*votes), num_pending_votes, f);
   }
   fclose(f);
@@ -65,18 +69,6 @@ void clear_pending_votes(int clear_until)
   memset(votes, sizeof(*votes), vote_array_size);
   memmove(votes, tmp_buf, to_move * sizeof(struct timestamped_vote));
   num_pending_votes = to_move;
-
-  /*
-  if (votes != NULL)
-  {
-    free(votes);
-    votes = NULL;
-  }
-
-  remove(filename);
-  num_pending_votes = 0;
-  vote_array_size = 200;
-  */
 }
 
 bool unsent_votes()
