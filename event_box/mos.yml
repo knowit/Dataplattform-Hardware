@@ -61,6 +61,8 @@ conds:
         - ["pins.greenLED", "i", 17, { title: "GPIO pin for green LED" }]
         - ["pins.blueLED", "i", 16, { title: "GPIO pin for blue LED" }]
 
+        - ["type", "s", "MoodBox", { title: "Topic for mood box"}]
+
   - when: build_vars.TARGET == "event"
     apply:
       config_schema:
@@ -75,6 +77,8 @@ conds:
         - ["pins.redLED", "i", 4, { title: "GPIO pin for red LED" }]
         - ["pins.greenLED", "i", 16, { title: "GPIO pin for green LED" }]
         - ["pins.blueLED", "i", 17, { title: "GPIO pin for blue LED" }]
+
+        - ["type", "s", "EventBox", { title: "Topic for event box"}]
 
 config_schema:
   - ["device.id", "knowit"]
