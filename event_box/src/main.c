@@ -27,10 +27,11 @@
 #include <time.h>
 
 static const char *s_our_ip = "192.168.4.1";
-static const char *topic = "iot/EventBox";
-static const char *format_str = "{ pathParameters: {type: EventBox },"
+static const char *topic = "iot/%s";
+static const char *format_str = "{ pathParameters: {type: %Q },"
                                 "body: {id: %d, time: %d, vote: %Q}}";
 
+char type_str[10] = {0};
 uint32_t id = 0;
 char *event_id = NULL;
 bool blinking = false;
@@ -84,8 +85,9 @@ static uint16_t publish_vote(enum VoteType vote, uint32_t timestamp)
     vote_str = "unknown";
     break;
   }
-
-  return publish(topic, format_str, id, timestamp, vote_str);
+  char topic_str[20];
+  sprintf(topic_str, topic, type_str);
+  return publish(topic_str, format_str, type_str, id, timestamp, vote_str);
 }
 
 /**
@@ -255,6 +257,12 @@ static inline void init_led()
   mgos_gpio_setup_output(blue_LED_pin, 0);
 }
 
+static inline void init_type()
+{
+  const char *temp_type = mgos_sys_config_get_type();
+  strncpy(type_str, temp_type, sizeof(type_str));
+}
+
 /**
  * Is called when system time is changed, which indicates that sntp has started
  * and updated system time.
@@ -281,6 +289,7 @@ enum mgos_app_init_result mgos_app_init(void)
   init_buttons();
   init_id();
   LOG(LL_INFO, ("Event Box ID: %d", id));
+  init_type();
 
   mgos_event_add_handler(MGOS_EVENT_TIME_CHANGED, time_change_cb, NULL);
 
