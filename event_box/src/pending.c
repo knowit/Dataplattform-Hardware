@@ -2,54 +2,76 @@
 #include "mgos.h"
 #include <stdio.h>
 
-void write_pending(struct pending_events pending)
+struct timestamped_vote *votes = NULL;
+int num_pending_votes = 0;
+int vote_array_size = 200;
+
+inline void init_unsent_votes()
+{
+  votes = malloc(sizeof(*votes) * vote_array_size);
+}
+inline void grow_vote_array()
+{
+  int new_size = vote_array_size * 2;
+  votes = realloc(votes, sizeof(*votes) * new_size);
+  vote_array_size = new_size;
+}
+
+void add_vote(enum VoteType vote, uint32_t timestamp)
+{
+  if (votes == NULL)
+  {
+    init_unsent_votes();
+  }
+  votes[num_pending_votes].timestamp = timestamp;
+  votes[num_pending_votes].vote = vote;
+  num_pending_votes++;
+
+  if (num_pending_votes >= vote_array_size)
+  {
+    grow_vote_array();
+  }
+}
+
+void write_pending_votes()
 {
   FILE *f = fopen(filename, "w+");
-  fwrite(&pending, sizeof(uint16_t), 3, f);
-  //fputs(pending.event_id, f);
+  fwrite(&num_pending_votes, sizeof(num_pending_votes), 1, f);
+  fwrite(votes, sizeof(*votes), num_pending_votes, f);
   fclose(f);
 }
 
-bool unsent_events(struct pending_events pending)
+void read_pending_votes()
 {
-  return (pending.positive || pending.negative || pending.negative);
-}
-
-void read_pending(struct pending_events *pending)
-{
+  if (votes == NULL)
+  {
+    init_unsent_votes();
+  }
   FILE *f = fopen(filename, "r");
   if (f)
   {
     LOG(LL_INFO, ("file exists"));
-    fread(pending, sizeof(uint16_t), 3, f);
-    //fgets(pending->event_id, sizeof(pending->event_id), f);
+    fread(&num_pending_votes, sizeof(num_pending_votes), 1, f);
+    while (num_pending_votes > vote_array_size)
+    {
+      grow_vote_array();
+    }
+    fread(votes, sizeof(*votes), num_pending_votes, f);
   }
   fclose(f);
 }
 
-void increase_unsent_events(uint16_t positive, uint16_t neutral, uint16_t negative, struct pending_events *pending)
+void clear_pending_votes(int clear_until)
 {
-  mgos_rlock(pending->lock);
-  pending->positive += positive;
-  pending->neutral += neutral;
-  pending->negative += negative;
-  write_pending(*pending);
-  mgos_runlock(pending->lock);
+  int to_move = num_pending_votes - clear_until;
+  struct timestamped_vote tmp_buf[to_move];
+  memmove(tmp_buf, votes + clear_until, to_move * sizeof(struct timestamped_vote));
+  memset(votes, sizeof(*votes), vote_array_size);
+  memmove(votes, tmp_buf, to_move * sizeof(struct timestamped_vote));
+  num_pending_votes = to_move;
 }
 
-struct pending_events *init_pending_struct(uint16_t positive, uint16_t neutral,
-                                           uint16_t negative, const char *event_id)
+bool unsent_votes()
 {
-  struct pending_events *the_struct = malloc(sizeof(*the_struct) + sizeof(char[strlen(event_id)]));
-  the_struct->positive = positive;
-  the_struct->neutral = neutral;
-  the_struct->negative = negative;
-  the_struct->lock = mgos_rlock_create();
-  return the_struct;
-}
-
-void free_pending_struct(struct pending_events *to_free)
-{
-  mgos_rlock_destroy(to_free->lock);
-  free(to_free);
+  return num_pending_votes > 0;
 }

@@ -5,20 +5,48 @@
 #include <inttypes.h>
 #include <stdio.h>
 
-struct pending_events
+enum VoteType
 {
-  uint16_t positive;
-  uint16_t neutral;
-  uint16_t negative;
-  struct mgos_rlock_type *lock;
-  char event_id[200];
+  positive,
+  neutral,
+  negative
+};
+
+struct timestamped_vote
+{
+  enum VoteType vote;
+  uint32_t timestamp;
 };
 
 static const char *filename = "pending";
+extern struct timestamped_vote *votes;
+extern int num_pending_votes;
 
-void write_pending(struct pending_events pending);
-bool unsent_events(struct pending_events pending);
-void read_pending(struct pending_events *pending);
-void increase_unsent_events(uint16_t positive, uint16_t neutral, uint16_t negative, struct pending_events *pending);
+/**
+ * Returns true if there are any votes that have not been sent yet.
+ * */
+bool unsent_votes();
+
+/**
+ * Adds a vote to the list of votes which are waiting to be sent.
+ * */
+void add_vote(enum VoteType vote, uint32_t timestamp);
+
+/**
+ * Removes votes from the pending list from index 0 and until (not including)
+ * index clear_until
+ * */
+void clear_pending_votes(int clear_until);
+
+/**
+ * Reads any pending votes stored on the filesystem.
+ * */
+void read_pending_votes();
+
+/**
+ * Writes all pending votes to filesystem so that they are persisted in case of
+ * a power loss.
+ * */
+void write_pending_votes();
 
 #endif
