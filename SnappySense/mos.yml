@@ -1,5 +1,5 @@
-author: mongoose-os
-description: A Mongoose OS app skeleton
+author: hakongimse
+description: A box with sensors connected to aws iot
 arch: esp32
 version: 1.0
 
@@ -16,80 +16,44 @@ sources:
   - src
 
 # List of dirs. Files from these dirs will be copied to the device filesystem
-#filesystem:
-#  - fs
-
-# Custom configuration entries, settable via "device configuration"
-# Below is a custom firmware configuration example.
-# Uncomment and modify according to your needs:
-
-# config_schema:
-#  - ["my_app", "o", {title: "My app custom settings"}]
-#  - ["my_app.bool_value", "b", false, {title: "Some boolean value"}]
-#  - ["my_app.string_value", "s", "", {title: "Some string value"}]
-#  - ["my_app.int_value", "i", 123, {title: "Some integer value"}]
-
-# These settings get compiled into the C structure, and can be accessed
-# from the C code this way:
-#
-# printf("Hello from %s!\n", mgos_sys_config_get_device_id());
-#
-# Settings are cool: can be modified remotely without full firmware upgrade!
-#
-# To see all available compiled settings, buid the firmware and open
-# build/gen/mgos_config.h file.
-#
-# Also, in this config_schema section, you can override existing
-# settings that has been created by other libraries. For example, debug log
-# level is 2 by default. For this firmware we can override it to 3:
-#
-# config_schema:
-#  - ["debug.level", 3]
+filesystem:
+  - fs
 
 config_schema:
-  - ["device.id", "snappySense-knowit"]
-  - ["device.password", "objectnet"]
-
-  #WIFI
-  - ["wifi.ap.ssid", "s", "SnappySense", { title: "SSID" }]
-  - ["wifi.ap.pass", "s", "snappsnapp", { title: "wifi password" }]
-  - ["wifi.ap.enable", "b", true, { title: "enable ap" }]
-
-  #Captive portal
-  - [
-      "cportal.enable",
-      "b",
-      true,
-      { title: "Enable WiFi captive portal on device boot" },
-    ]
-  - [
-      "cportal.any",
-      "b",
-      true,
-      { title: "Return index file for any non-hostname matching requests" },
-    ]
-  - [
-      "cportal.ip_redirect",
-      "b",
-      true,
-      {
-        title: "Send 302 redirect to configured hostname when IP directly accessed",
-      },
-    ]
+  - ["mqtt.pub", "s", "/snappySense", { title: "Publish topic" }]
+  # - ["mqtt.sub", "s", "/request", { title: "Subscribe topic" }]
+  - ["mqtt.server", "broker.mqttdashboard.com:1883"]
+  - ["device.id", "snappysense"]
 
   #LOCATION
-  - ["thing.location", "s", "Lakkegata 53", {title: "The thing's location"}]
-
+  - ["thing.location", "s", "Lakkegata 53", { title: "The thing's location" }]
 
   #PINS
-  - ["pins.co2", "i", 26, {title: "GPIO pin for co2 sensor"}]
-  - ["pins.photoresistor", "i", 33, {title: "GPIO pin for photo resistor"}]
-  - ["pins.temp", "i", 18, {title: "GPIO pin for temperature/humidity sensor"}]
-  - ["pins.pir", "i", 25, {title: "GPIO pin for pir sensor"}]
-  - ["pins.ledr", "i", 5, {title: "GPIO pin for led"}]
-  - ["pins.ledg", "i", 17, {title: "GPIO pin for led"}]
-  - ["pins.ledb", "i", 16, {title: "GPIO pin for led"}]
-  - ["pins.noise", "i", 32, {title: "GPIO pin for noise sensor"}]
+  - ["pins.co2", "i", 26, { title: "GPIO pin for co2 sensor" }]
+  - [
+      "pins.temp",
+      "i",
+      18,
+      { title: "GPIO pin for temperature/humidity sensor" },
+    ]
+  - ["pins.pir", "i", 25, { title: "GPIO pin for pir sensor" }]
+  - ["pins.ledr", "i", 5, { title: "GPIO pin for led" }]
+  - ["pins.ledg", "i", 17, { title: "GPIO pin for led" }]
+  - ["pins.ledb", "i", 16, { title: "GPIO pin for led" }]
+  - ["pins.mic", "i", 32, { title: "GPIO pin for microphone" }]
+  - [
+      "pins.transistor_mic",
+      "i",
+      33,
+      { title: "GPIO pin for 3.3v transistor mic" },
+    ]
+  - [
+      "pins.transistor_dht",
+      "i",
+      22,
+      { title: "GPIO pin for 3.3v transistor dht" },
+    ]
+  - ["pins.transistor_co2", "i", 4, { title: "GPIO pin for 5v transistor co2" }]
 
 libs:
   - origin: https://github.com/mongoose-os-libs/boards
@@ -108,10 +72,7 @@ libs:
   - origin: https://github.com/mongoose-os-libs/wifi-setup-web-ui
   - origin: https://github.com/tripflex/captive-portal
 
-cdefs:
-  MG_ENABLE_DNS: 1
-  MG_ENABLE_DNS_SERVER: 1
-  MGOS_WIFI_ENABLE_AP_STA: 1
+build_vars:
+  SSL: mbedTLS
 
-# Used by the mos tool to catch mos binaries incompatible with this file format
 manifest_version: 2017-09-29

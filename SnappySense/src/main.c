@@ -1,4 +1,4 @@
-	/*
+/*
  * Copyright (c) 2014-2018 Cesanta Software Limited
  * All rights reserved
  *
@@ -16,15 +16,20 @@
  */
 
 #include "mgos.h"
+#include "soc/timer_group_struct.h"
+#include "soc/timer_group_reg.h"
 #include "mgos_mqtt.h"
 #include "mgos_adc.h"
 #include "mgos_dht.h"
 
 #include "co2_sensor.h"
-#include "db_sensor.h"
 
+float temp_reading = 0;
+float humidity_reading = 0;
+float co2_reading = 0;
+int mic_reading = 0;
 
-static void publish(const char *topic, const char *fmt, ...)
+static void publish_data(const char *topic, const char *fmt, ...)
 {
 	char message[200];
 	struct json_out json_message = JSON_OUT_BUF(message, sizeof(message));
@@ -36,66 +41,103 @@ static void publish(const char *topic, const char *fmt, ...)
 	mgos_mqtt_pub(topic, message, n, 1, 0);
 }
 
-void ap_enabled(bool state)
+static void read_co2(void *arg)
 {
-  struct mgos_config_wifi_ap ap_cfg;
-  memcpy(&ap_cfg, mgos_sys_config_get_wifi_ap(), sizeof(ap_cfg));
-  ap_cfg.enable = state;
-  if (!mgos_wifi_setup_ap(&ap_cfg))
-  {
-	LOG(LL_ERROR, ("Wifi AP setup failed"));
-  }
+	LOG(LL_INFO, ("Starting co2 sampling"));
+	int readCount = 0;
+	int readSum = 0;
+	while (readCount < 5)
+	{
+		long ppm = co2(mgos_sys_config_get_pins_co2());
+		mgos_wdt_feed();
+		if (ppm > 0)
+		{
+			readCount++;
+			readSum += (int)ppm;
+		}
+		LOG(LL_INFO, ("PPM: %li %d", ppm, readCount));
+	}
+	co2_reading = readSum / readCount;
+	LOG(LL_INFO, ("Avg PPM:  %f", co2_reading));
+	mgos_gpio_write(mgos_sys_config_get_pins_transistor_co2(), 0);
+	publish_data("/snappySense",
+				 "{co2: %f, temperature: %f, humidity: %f, mic: %d }",
+				 co2_reading, temp_reading, humidity_reading, mic_reading);
 }
 
-
-static void handler(struct mg_connection *c, const char *topic, int topic_len, const char *msg, int msg_len, void *userdata){
-	LOG(LL_INFO, ("Got message on topic %.*s", topic_len, topic));
+static void warmup_co2()
+{
+	LOG(LL_INFO, ("Warmup co2"));
+	// Warm up co2 sensor for at least 3 minutes to get good readings
+	mgos_gpio_write(mgos_sys_config_get_pins_transistor_co2(), 1);
+	mgos_set_timer(1 * 60 * 1000 /* ms */, false, read_co2, NULL);
 }
 
-static void timer_cb(void *arg) {
+static void read_mic(void *arg)
+{
+	LOG(LL_INFO, ("Starting mic sampling"));
+	int max = 0;
+	for (int i = 0; i < 1000; i++)
+	{
+		int noise = mgos_adc_read(mgos_sys_config_get_pins_mic());
+		if (noise > max)
+		{
+			max = noise;
+		}
+	}
+	mgos_gpio_write(mgos_sys_config_get_pins_transistor_mic(), 0);
+	mic_reading = max;
+	LOG(LL_INFO, ("Mic: %d", mic_reading));
+	mgos_wdt_feed();
 
+	warmup_co2();
+}
+
+static void warmup_mic()
+{
+	LOG(LL_INFO, ("Warmup mic"));
+	mgos_gpio_write(mgos_sys_config_get_pins_transistor_mic(), 1);
+	mgos_set_timer(10 * 1000 /* ms */, false, read_mic, NULL);
+}
+
+static void read_dht(void *arg)
+{
+	LOG(LL_INFO, ("Starting DHT sampling"));
 	struct mgos_dht *temp_humid;
 	temp_humid = mgos_dht_create(mgos_sys_config_get_pins_temp(), AM2301);
-
-
-	long int ppm = co2(mgos_sys_config_get_pins_co2());
-	double noise = get_noise(mgos_sys_config_get_pins_noise(), 1000 * 10);
-	//double noise = 0;
-	int light = 4095 - mgos_adc_read(mgos_sys_config_get_pins_photoresistor());
-	float temp = mgos_dht_get_temp(temp_humid);
-	float humidity = mgos_dht_get_humidity(temp_humid);
-	int movement = mgos_gpio_read(mgos_sys_config_get_pins_pir());
-	char location[20];
-	strcpy(location, mgos_sys_config_get_thing_location());
-
-	publish("iot/snappySense",
-	        "{ pathParameters: {type: SnappySenseType }, body: {location: %Q, co2: %d, noise: %f, light: %d, temperature: %f, humidity: %f, movement: %d }}",
-			location, ppm, noise, light, temp, humidity, movement);
+	temp_reading = mgos_dht_get_temp(temp_humid);
+	humidity_reading = mgos_dht_get_humidity(temp_humid);
+	mgos_gpio_write(mgos_sys_config_get_pins_transistor_dht(), 0);
+	LOG(LL_INFO, ("Temp: %f, Humidity: %f", temp_reading, humidity_reading));
+	warmup_mic();
 }
 
-enum mgos_app_init_result mgos_app_init(void) {
-#ifdef LED_PIN
-	mgos_gpio_setup_output(LED_PIN, 0);
-	ap_enabled(true)
-#endif
+static void warmup_dht()
+{
+	LOG(LL_INFO, ("Warmup dht"));
+	mgos_gpio_write(mgos_sys_config_get_pins_transistor_dht(), 1);
+	mgos_set_timer(10 * 1000 /* ms */, false, read_dht, NULL);
+}
 
-	mgos_gpio_setup_input(mgos_sys_config_get_pins_co2(), 0);
+static void start_sensor_reading_sequence(void *arg)
+{
+	warmup_dht();
+}
+
+enum mgos_app_init_result mgos_app_init(void)
+{
 	mgos_gpio_setup_input(mgos_sys_config_get_pins_temp(), 0);
-	mgos_gpio_setup_input(mgos_sys_config_get_pins_pir(), 0);
-	mgos_gpio_setup_output(mgos_sys_config_get_pins_ledr(), 0);
-	mgos_gpio_setup_output(mgos_sys_config_get_pins_ledg(), 0);
-	mgos_gpio_setup_output(mgos_sys_config_get_pins_ledb(), 0);
-	mgos_gpio_write(mgos_sys_config_get_pins_ledr(), 1);
-	mgos_gpio_write(mgos_sys_config_get_pins_ledg(), 1);
-	mgos_gpio_write(mgos_sys_config_get_pins_ledb(), 1);
+	mgos_gpio_setup_input(mgos_sys_config_get_pins_mic(), 0);
+	mgos_gpio_setup_input(mgos_sys_config_get_pins_co2(), 0);
 
-	mgos_gpio_setup_input(mgos_sys_config_get_pins_photoresistor(), 0);
-	mgos_adc_enable(mgos_sys_config_get_pins_photoresistor());
-	mgos_gpio_setup_input(mgos_sys_config_get_pins_noise(), 0);
-	mgos_adc_enable(mgos_sys_config_get_pins_noise());
+	mgos_gpio_setup_output(mgos_sys_config_get_pins_transistor_dht(), 0);
+	mgos_gpio_setup_output(mgos_sys_config_get_pins_transistor_mic(), 0);
+	mgos_gpio_setup_output(mgos_sys_config_get_pins_transistor_co2(), 0);
 
-	mgos_set_timer(1000 * 10/* ms */, MGOS_TIMER_REPEAT, timer_cb, NULL);
+	mgos_adc_enable(mgos_sys_config_get_pins_mic());
+
+	start_sensor_reading_sequence(NULL);
+	mgos_set_timer(60 * 60 * 1000 /* ms */, MGOS_TIMER_REPEAT, start_sensor_reading_sequence, NULL);
+
 	return MGOS_APP_INIT_SUCCESS;
 }
-
- 

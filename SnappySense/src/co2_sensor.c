@@ -2,61 +2,55 @@
 #include <stdbool.h>
 #include "mgos.h"
 
-#define HIGH 5000
-#define TIMEOUT 1004000
+#define TIMEOUT 2000
+#define MILLIS() (int64_t)(mgos_uptime_micros() / 1000)
 
-#define PPM(th, tl) HIGH * (th - 2) / (th + tl - 4)
-
-#define UPTIME() (uint64_t) (1000000 * mgos_uptime())
-
-
-static uint32_t pulseInLong(uint8_t pin, uint8_t state, uint32_t timeout)
+long co2(uint8_t pin)
 {
 
-    uint64_t startMicros = UPTIME();
-
-
-    // wait for any previous pulse to end
-    while (state == mgos_gpio_read(pin)) {
-        if ((UPTIME() - startMicros) > timeout) {
+    uint64_t t0 = MILLIS();
+    // wait while pulse is low
+    while (mgos_gpio_read(pin) == 0)
+    {
+        if ((MILLIS() - t0) > TIMEOUT)
+        {
+            return 0;
+        }
+    }
+    uint64_t t1 = MILLIS();
+    // wait while pulse is high
+    while (mgos_gpio_read(pin) == 1)
+    {
+        if ((MILLIS() - t1) > TIMEOUT)
+        {
             return 0;
         }
     }
 
-    // wait for the pulse to start
-    while (state != mgos_gpio_read(pin)) {
-        if ((UPTIME() - startMicros) > timeout) {
+    uint64_t t2 = MILLIS();
+    // wait while pulse is low
+    while (mgos_gpio_read(pin) == 0)
+    {
+        if ((MILLIS() - t2) > TIMEOUT)
+        {
             return 0;
         }
     }
 
-    uint64_t start = UPTIME();
+    uint64_t t3 = MILLIS();
 
-    // wait for the pulse to stop
-    while (state == mgos_gpio_read(pin)) {
-        if ((UPTIME() - startMicros) > timeout) {
+    // wait for pulse to reset to low
+    while (mgos_gpio_read(pin) == 1)
+    {
+        if ((MILLIS() - t3) > TIMEOUT)
+        {
             return 0;
         }
     }
 
-    return (uint32_t) (UPTIME() - start);
-}
-
-long int co2(uint8_t pwm_pin)
-{
-	unsigned long th, tl, ppm_pwm = 0;
-
-	LOG(LL_INFO, ("Getting co2"));
-
-	do {
-		th = pulseInLong(pwm_pin, true, TIMEOUT) / 1000;
-		mgos_wdt_feed();
-		tl = 1004 - th;
-
-		ppm_pwm = PPM(th, tl);
-
-	} while(th == 0);
-
-
-	return ppm_pwm;
+    long th = t2 - t1;
+    long tl = t3 - t2;
+    LOG(LL_INFO, ("th:  %li, tl: %li", th, tl));
+    long ppm = 5000L * (th - 2) / (th + tl - 4);
+    return ppm;
 }
